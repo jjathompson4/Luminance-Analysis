@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Luminance Analysis Web</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-frame">
+      <header class="masthead">
+        <div class="brand">
+          <div class="mark">JT</div>
+          <div class="copy">
+            <h1>Luminance Analysis</h1>
+            <p>Upload HDR or EXR files, calibrate against known values, and explore luminance statistics without leaving the browser.</p>
+          </div>
+        </div>
+        <div class="calibration-chip" id="calibrationStatus">Not calibrated</div>
+      </header>
+
+      <section class="status-bar">
+        <div class="status-card">
+          <span class="label">File</span>
+          <span class="value" id="fileName">None loaded</span>
+        </div>
+        <div class="status-card">
+          <span class="label">Resolution</span>
+          <span class="value" id="fileDimensions">— × —</span>
+        </div>
+        <div class="status-card span-two">
+          <span class="label">Luminance</span>
+          <span class="value" id="luminanceStats">Min=-- Max=-- Mean=--</span>
+        </div>
+      </section>
+
+      <main class="workspace">
+        <aside class="sidebar">
+          <section class="panel upload" id="uploadPanel">
+            <label class="dropzone" id="dropZone">
+              <input type="file" id="fileInput" accept=".hdr,.exr" />
+              <div class="drop-icon">⇡</div>
+              <div class="drop-copy">
+                <strong>Drop HDR / EXR here or browse</strong>
+                <span>Supports Radiance .hdr and OpenEXR .exr</span>
+              </div>
+            </label>
+            <div class="actions">
+              <button id="calibrateButton" class="action primary" disabled>Calibrate</button>
+              <button id="clearTags" class="action subtle" disabled>Clear Annotations</button>
+            </div>
+            <button id="showHistogram" class="action ghost" disabled>View Luminance Histogram</button>
+          </section>
+
+          <section class="panel">
+            <h2>Display Controls</h2>
+            <div class="control">
+              <div class="control-label">
+                <span>Exposure (EV)</span>
+                <span id="exposureValue">6</span>
+              </div>
+              <input type="range" id="exposureSlider" min="-10" max="20" value="6" step="1" disabled />
+            </div>
+            <div class="control split">
+              <div class="slider-group">
+                <div class="control-label">
+                  <span>Gamma</span>
+                  <span id="gammaValue">2.2</span>
+                </div>
+                <input type="range" id="gammaSlider" min="1.0" max="3.0" value="2.2" step="0.1" disabled />
+              </div>
+              <label class="checkbox">
+                <input type="checkbox" id="srgbCheckbox" />
+                <span>Use sRGB curve</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>False Color</h2>
+            <label class="checkbox primary">
+              <input type="checkbox" id="falsecolorCheckbox" />
+              <span>Enable false-color overlay</span>
+            </label>
+            <div id="falsecolorControls" class="falsecolor-config hidden">
+              <label class="field">
+                <span>Colormap</span>
+                <select id="colormapSelect">
+                  <option value="jet">Jet</option>
+                  <option value="viridis">Viridis</option>
+                  <option value="plasma">Plasma</option>
+                  <option value="inferno">Inferno</option>
+                </select>
+              </label>
+              <div class="field-group">
+                <label class="field">
+                  <span>Min (cd/m²)</span>
+                  <input type="number" id="falsecolorMin" value="0" />
+                </label>
+                <label class="field">
+                  <span>Max (cd/m²)</span>
+                  <input type="number" id="falsecolorMax" value="1000" />
+                </label>
+              </div>
+              <label class="checkbox">
+                <input type="checkbox" id="displayScale" checked />
+                <span>Show legend</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="panel annotations">
+            <h2>Annotations</h2>
+            <div class="annotation-help">Click to sample a pixel • Drag to define an ROI</div>
+            <ul id="annotationList" class="annotation-list empty">
+              <li>No annotations yet</li>
+            </ul>
+          </section>
+        </aside>
+
+        <section class="canvas-area">
+          <article class="preview-card">
+            <header class="preview-header">
+              <div>
+                <h2>Image Preview</h2>
+                <span class="hint">Interact directly with the canvas to probe luminance</span>
+              </div>
+            </header>
+            <div class="image-stage" id="imageWrapper">
+              <img id="hdrImage" alt="HDR preview" />
+              <canvas id="overlay"></canvas>
+              <div class="placeholder" id="imagePlaceholder">
+                Drop an HDR/EXR file to begin the analysis.
+              </div>
+            </div>
+          </article>
+
+          <article class="panel colorbar hidden" id="colorbarContainer">
+            <header>
+              <h3>Luminance Legend</h3>
+            </header>
+            <div class="legend">
+              <img id="colorbarImage" alt="False color legend" />
+              <span class="legend-caption">Values expressed in cd/m²</span>
+            </div>
+          </article>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>Need to sanity-check a probe? Use the histogram panel or export the annotations list.</span>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <div id="loadingOverlay" class="loading hidden">
+      <div class="spinner"></div>
+      <p id="loadingText">Processing…</p>
+    </div>
+
+    <dialog id="histogramDialog">
+      <form method="dialog">
+        <header>
+          <h2>Luminance Histogram</h2>
+          <menu>
+            <button value="close" class="action ghost">Close</button>
+          </menu>
+        </header>
+        <div class="histogram-controls">
+          <label>
+            <input type="radio" name="histogramMode" value="calibrated" checked />
+            <span>Calibrated</span>
+          </label>
+          <label>
+            <input type="radio" name="histogramMode" value="original" />
+            <span>Original</span>
+          </label>
+        </div>
+        <canvas id="histogramChart" width="560" height="360"></canvas>
+      </form>
+    </dialog>
+  </body>
+</html>
