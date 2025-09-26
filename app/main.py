@@ -214,3 +214,7 @@ async def histogram(sessionId: str, mode: str = "calibrated"):
     hdr = session.calibrated_hdr if mode == "calibrated" else session.original_hdr
     bins, counts = luminance_histogram(hdr)
     return {"bins": bins, "counts": counts}
+
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
